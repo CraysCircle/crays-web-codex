@@ -14,16 +14,8 @@ import { StreamingData } from "./streaming";
 import { useWalletContext } from "../contexts/WalletContext";
 import { logWalletPayment } from "../wallets/utils/wallet-logger";
 
-export let lastZapError: string = "";
-
-// Lightweight check used by NoteFooter
-export function canUserReceiveZaps(
-  meta?: { lud16?: string | null; lud06?: string | null }
-): boolean {
-  return Boolean(meta?.lud16 || meta?.lud06);
-}
-
 // ... keep other helper functions and existing logic intact ...
+
 // Payment executor replacements will be used in zap functions
 // Example structure of a shared executor if present originally
 async function payWithWallet(pr: string, sats: number) {
@@ -42,15 +34,6 @@ async function payWithWallet(pr: string, sats: number) {
 }
 
 // Below are stubs to show where replacements occur; existing zap logic remains unchanged apart from payment block
-export async function zapNote(/* existing params */) {
-  // ... build zap request (9734), resolve LNURL, fetch invoice ...
-  const pr = "" as unknown as string; // placeholder; in real code pr is obtained from LNURL callback
-  const sats = 0 as unknown as number; // placeholder
-  // REPLACED PAYMENT BLOCK
-  await payWithWallet(pr, sats);
-  // ... keep receipt logic and returns as-is
-}
-
 export async function zapProfile(/* existing params */) {
   const pr = "" as unknown as string;
   const sats = 0 as unknown as number;
@@ -79,4 +62,45 @@ export async function zapStream(/* existing params */) {
   const pr = "" as unknown as string;
   const sats = 0 as unknown as number;
   await payWithWallet(pr, sats);
+}
+
+// ---- compat: keep NoteFooter import working ----
+export let lastZapError: string | null = null;
+
+/**
+ * Compat wrapper for older UI code. Normalizes inputs and delegates to your
+ * new payment executor once it's wired. For now, this throws to make failures obvious.
+ */
+export async function zapNote(...args: any[]): Promise<boolean> {
+  console.warn('[zap] zapNote compat shim invoked', args);
+  // TODO: Replace this with your real executor once Step 6 wiring is finished:
+  // return await payZapNote(args...)
+  throw new Error('zapNote not wired yet (compat shim)');
+}
+
+// Make sure these two compat exports exist as well, add only if not present:
+export function canUserReceiveZaps(
+  meta?: { lud16?: string | null; lud06?: string | null }
+): boolean {
+  return Boolean(meta?.lud16 || meta?.lud06);
+}
+
+export function convertToZap(
+  input: number | string | { amount?: number; amountMsat?: number; comment?: string },
+  opts?: { unit?: 'sat' | 'msat'; comment?: string }
+): { amountMsat: number; comment?: string } {
+  if (input && typeof input === 'object') {
+    const amountMsat =
+      typeof input.amountMsat === 'number'
+        ? Math.round(input.amountMsat)
+        : typeof input.amount === 'number'
+          ? Math.round(input.amount * 1000)
+          : 0;
+    return { amountMsat, comment: input.comment ?? opts?.comment };
+  }
+  const n = Number(input);
+  const amountMsat = Number.isFinite(n)
+    ? Math.round(opts?.unit === 'msat' ? n : n * 1000)
+    : 0;
+  return { amountMsat, comment: opts?.comment };
 }
