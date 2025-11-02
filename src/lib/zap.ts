@@ -104,3 +104,10 @@ export function convertToZap(
 
   return { amountMsat, comment: opts?.comment };
 }
+
+// Lightweight check used by NoteFooter
+export function canUserReceiveZaps(
+  meta?: { lud16?: string | null; lud06?: string | null }
+): boolean {
+  return Boolean(meta?.lud16 || meta?.lud06);
+}
