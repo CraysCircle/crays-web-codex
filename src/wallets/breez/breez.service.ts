@@ -5,85 +5,110 @@
  * Handles initialization, payments, invoices, and state management.
  */
 import type { BreezConfig, BreezNodeState, BreezPayment, BreezInvoice, BreezEvent } from './breez.types';
-import { init, connect, defaultConfig, type Seed, nodeInfo, receivePayment, sendPayment, listPayments as sdkListPayments } from '@breeztech/breez-sdk-spark';
+import init, { connect, defaultConfig, type Seed } from '@breeztech/breez-sdk-spark';
 
-let breezSdk: any = null;
-let breezInstance: any = null;
+let _inited = false;
+let _sdk: any | null = null;
 let eventListeners: Array<(event: BreezEvent) => void> = [];
 
 /**
- * Initialize Breez SDK
+ * Ensure SDK is initialized (guard pattern for web/WASM)
  */
-export async function initBreez(config: BreezConfig): Promise<void> {
-  try {
-    // Dynamically import Breez SDK (WASM)
-    if (!breezSdk) {
-      breezSdk = await import('@breeztech/breez-sdk-spark');
+export async function ensureSdk(opts: { apiKey: string; network: 'mainnet' | 'testnet'; seed: Seed; }) {
+  if (!_inited) {
+    if (typeof window !== 'undefined') {
+      await init();
     }
-    
-    // Get default configuration
-    const sdkConfig = await defaultConfig(
-      config.network === 'mainnet' ? 'bitcoin' : 'testnet',
-      config.apiKey,
-      config.workingDir || 'breez-sdk'
-    );
-    
-    // Initialize SDK instance
-    breezInstance = await init({
-      ...sdkConfig,
-      seed: config.seed as Seed,
-    });
-    
-    // Connect to the Breez node
-    await connect({
-      config: sdkConfig,
-      seed: config.seed as Seed,
-    });
-    
-    console.log('Breez SDK initialized and connected', sdkConfig);
-    
-    // Register event listeners
-    if (breezInstance && breezInstance.addEventListener) {
-      breezInstance.addEventListener('payment', handlePaymentEvent);
-    }
-    
-  } catch (error) {
-    console.error('Failed to initialize Breez SDK:', error);
-    throw new Error(`Breez initialization failed: ${error}`);
+    _inited = true;
   }
+  if (!_sdk) {
+    const cfg = defaultConfig(opts.network);
+    cfg.apiKey = opts.apiKey;
+    _sdk = await connect({
+      config: cfg,
+      seed: opts.seed,
+      storageDir: 'crays-wallet',
+    });
+  }
+  return _sdk;
 }
 
 /**
- * Get wallet balance
+ * Initialize Breez SDK (deprecated - use ensureSdk directly)
  */
-export async function getBalance(): Promise<number> {
-  if (!breezInstance) {
-    throw new Error('Breez SDK not initialized');
-  }
-  
+export async function initBreez(config: BreezConfig): Promise<void> {
   try {
-    const nodeState = await nodeInfo();
-    return nodeState.channelsBalanceMsat;
+    const opts = {
+      apiKey: config.apiKey,
+      network: config.network,
+      seed: config.seed as Seed,
+    };
+    await ensureSdk(opts);
+    console.log('Breez SDK initialized and connected');
   } catch (error) {
-    console.error('Failed to get balance:', error);
+    console.error('Failed to initialize Breez SDK:', error);
     throw error;
   }
 }
 
 /**
- * Create Lightning invoice
+ * Disconnect from Breez SDK
  */
-export async function createInvoice(amountMsat: number, description?: string): Promise<{ bolt11: string }> {
-  if (!breezInstance) {
+export async function disconnectBreez(): Promise<void> {
+  if (_sdk) {
+    try {
+      // Breez SDK may have a disconnect method
+      if (_sdk.disconnect) {
+        await _sdk.disconnect();
+      }
+      _sdk = null;
+      _inited = false;
+      console.log('Breez SDK disconnected');
+    } catch (error) {
+      console.error('Failed to disconnect Breez SDK:', error);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Get current node info/state
+ */
+export async function getNodeInfo(): Promise<BreezNodeState | null> {
+  if (!_sdk) {
     throw new Error('Breez SDK not initialized');
   }
   
   try {
-    const invoice = await receivePayment({
-      amountMsat,
-      description: description || '',
+    const info = await _sdk.nodeInfo();
+    return {
+      id: info.id || '',
+      alias: info.alias || '',
+      color: info.color || '',
+      maxReceivable: info.maxReceivableSat || 0,
+      maxPayable: info.maxPayableSat || 0,
+      channelState: info.channelState || 'unknown',
+    };
+  } catch (error) {
+    console.error('Failed to get node info:', error);
+    return null;
+  }
+}
+
+/**
+ * Create a Lightning invoice
+ */
+export async function createInvoice(amountMsats: number, description: string): Promise<string> {
+  if (!_sdk) {
+    throw new Error('Breez SDK not initialized');
+  }
+  
+  try {
+    const result = await _sdk.receivePayment({
+      amountMsat: amountMsats,
+      description,
     });
-    return { bolt11: invoice.bolt11 };
+    return result.bolt11 || result.invoice;
   } catch (error) {
     console.error('Failed to create invoice:', error);
     throw error;
@@ -91,78 +116,55 @@ export async function createInvoice(amountMsat: number, description?: string): P
 }
 
 /**
- * Send payment via bolt11 invoice
+ * Pay a Lightning invoice
  */
-export async function sendBolt11(bolt11: string): Promise<{ id: string; status: 'success' | 'failed'; preimage?: string }> {
-  if (!breezInstance) {
+export async function payInvoice(bolt11: string): Promise<BreezPayment> {
+  if (!_sdk) {
     throw new Error('Breez SDK not initialized');
   }
   
   try {
-    const payment = await sendPayment({ bolt11 });
+    // Optional: prepare payment to check fees
+    // const prepared = await _sdk.prepareSendPayment({ bolt11 });
+    
+    const result = await _sdk.sendPayment({ bolt11 });
+    
     return {
-      id: payment.id,
-      status: payment.status === 'complete' ? 'success' : 'failed',
-      preimage: payment.preimage,
+      id: result.id || result.paymentHash,
+      paymentHash: result.paymentHash,
+      destination: result.destination,
+      amountMsats: result.amountMsat,
+      feeMsats: result.feeMsat || 0,
+      status: result.status,
+      timestamp: result.paymentTime || Date.now(),
+      description: result.description || '',
     };
   } catch (error) {
-    console.error('Failed to send payment:', error);
-    return { id: '', status: 'failed' };
+    console.error('Failed to pay invoice:', error);
+    throw error;
   }
 }
 
 /**
- * Pay LNURL-pay endpoint
- */
-export async function payLnurl(
-  url: string,
-  amountMsat: number,
-  comment?: string,
-  zapRequestJson?: string
-): Promise<{ id: string; status: 'success' | 'failed' }> {
-  if (!breezInstance) {
-    throw new Error('Breez SDK not initialized');
-  }
-  
-  try {
-    // Fetch LNURL callback
-    const params = new URLSearchParams({
-      amount: amountMsat.toString(),
-    });
-    
-    if (comment) {
-      params.set('comment', comment);
-    }
-    
-    if (zapRequestJson) {
-      params.set('nostr', zapRequestJson);
-    }
-    
-    const response = await fetch(`${url}?${params.toString()}`);
-    const data = await response.json();
-    
-    if (data.status === 'ERROR') {
-      throw new Error(data.reason || 'LNURL-pay failed');
-    }
-    
-    // Pay the invoice
-    return await sendBolt11(data.pr);
-  } catch (error) {
-    console.error('Failed to pay LNURL:', error);
-    return { id: '', status: 'failed' };
-  }
-}
-
-/**
- * List payment history
+ * List all payments
  */
 export async function listPayments(): Promise<BreezPayment[]> {
-  if (!breezInstance) {
+  if (!_sdk) {
     throw new Error('Breez SDK not initialized');
   }
   
   try {
-    return await sdkListPayments();
+    const payments = await _sdk.listPayments();
+    return payments.map((p: any) => ({
+      id: p.id || p.paymentHash,
+      paymentHash: p.paymentHash,
+      destination: p.destination,
+      amountMsats: p.amountMsat,
+      feeMsats: p.feeMsat || 0,
+      status: p.status,
+      timestamp: p.paymentTime || Date.now(),
+      description: p.description || '',
+    }));
   } catch (error) {
     console.error('Failed to list payments:', error);
     return [];
