@@ -3,7 +3,6 @@
  * 
  * Implements WalletAdapter interface using Breez SDK (Spark/WASM).
  */
-
 import type { WalletAdapter } from './WalletAdapter';
 import * as BreezService from '../breez/breez.service';
 import type { BreezEvent } from '../breez/breez.types';
@@ -12,6 +11,7 @@ export class BreezAdapter implements WalletAdapter {
   private apiKey: string;
   private network: 'bitcoin' | 'testnet' | 'signet' | 'regtest';
   private eventCallbacks: Array<(e: any) => void> = [];
+  private _initialized = false;
 
   constructor(config: { apiKey: string; network?: 'bitcoin' | 'testnet' | 'signet' | 'regtest' }) {
     this.apiKey = config.apiKey;
@@ -19,6 +19,11 @@ export class BreezAdapter implements WalletAdapter {
   }
 
   async init(): Promise<void> {
+    // Idempotency guard: prevent multiple initializations
+    if (this._initialized) {
+      return;
+    }
+
     try {
       await BreezService.initBreez({
         apiKey: this.apiKey,
@@ -27,6 +32,9 @@ export class BreezAdapter implements WalletAdapter {
 
       // Register event forwarder
       BreezService.addEventListener(this.handleBreezEvent.bind(this));
+
+      // Mark as initialized
+      this._initialized = true;
     } catch (error) {
       console.error('BreezAdapter: Failed to initialize', error);
       throw error;
@@ -54,7 +62,7 @@ export class BreezAdapter implements WalletAdapter {
     return await BreezService.payLnurl(url, amountMsat, comment, zapRequestJson);
   }
 
-  async listPayments(): Promise<any[]> {
+  async listPayments(): Promise<any> {
     return await BreezService.listPayments();
   }
 
