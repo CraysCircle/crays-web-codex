@@ -23,16 +23,13 @@ export class BreezAdapter implements WalletAdapter {
     if (this._initialized) {
       return;
     }
-
     try {
       await BreezService.initBreez({
         apiKey: this.apiKey,
         network: this.network,
       });
-
       // Register event forwarder
       BreezService.addEventListener(this.handleBreezEvent.bind(this));
-
       // Mark as initialized
       this._initialized = true;
     } catch (error) {
@@ -42,7 +39,8 @@ export class BreezAdapter implements WalletAdapter {
   }
 
   async getBalance(): Promise<number> {
-    return await BreezService.getBalance();
+    const nodeInfo = await BreezService.getNodeInfo();
+    return nodeInfo?.maxPayable || 0;
   }
 
   async createInvoice(amountMsat: number, memo?: string): Promise<{ bolt11: string }> {
@@ -50,7 +48,12 @@ export class BreezAdapter implements WalletAdapter {
   }
 
   async sendBolt11(invoice: string): Promise<{ id: string; status: 'success' | 'failed'; preimage?: string }> {
-    return await BreezService.sendBolt11(invoice);
+    const result = await BreezService.payInvoice(invoice);
+    return { 
+      id: result.id, 
+      status: result.status === 'complete' ? 'success' : 'failed',
+      preimage: result.paymentHash 
+    };
   }
 
   async payLnurlPay(
@@ -59,7 +62,8 @@ export class BreezAdapter implements WalletAdapter {
     comment?: string,
     zapRequestJson?: string
   ): Promise<{ id: string; status: 'success' | 'failed' }> {
-    return await BreezService.payLnurl(url, amountMsat, comment, zapRequestJson);
+    // TODO: Implement LNURL-pay in breez.service.ts
+    throw new Error('LNURL-pay not yet implemented in Breez service');
   }
 
   async listPayments(): Promise<any> {
