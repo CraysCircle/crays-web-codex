@@ -45,90 +45,201 @@ VITE_ENABLE_ZAPS=true
    ```
 
 3. **Integration Points:**
-   - Modify `src/lib/zap.ts` payment execution
-   - Create `WalletContext` for adapter management
-   - Keep all UI components unchanged ✓
+   - Need WalletContext provider
+   - Replace WebLN/NWC detection
+   - Preserve NIP-57 zap flow
+
+**Commit:** `docs: add wallet code audit and integration planning`
 
 ---
 
-### ✅ Step 3: Create Breez Service Adapter
+### ✅ Step 3: Add Breez SDK
+
+**Dependencies Added:**
+```bash
+npm install @breeztech/react-native-breez-sdk
+npm install --save-dev @types/node
+```
 
 **Files Created:**
-- `src/services/breez/breez.service.ts` (213 lines)
-  - Complete service adapter with full API
-  - Implements BreezWalletService interface
-  - Methods: initialize, getBalance, pay, sendPayment, receivePayment, getPaymentHistory, disconnect
-  - Comprehensive error handling
-  - TypeScript typed
+- `src/lib/breez.types.ts` - TypeScript interfaces
+- `src/lib/breez.service.ts` - Breez SDK wrapper
+- `src/lib/breez.adapter.ts` - WalletAdapter implementation
+
+**Key Features:**
+- Full TypeScript support
+- Event-driven architecture
+- Error handling
+- WASM binary support
+- Production-ready structure
+
+**Commit:** `feat: add breez sdk core service layer`
+
+---
+
+### ✅ Step 4: Implement WalletAdapter
+
+**Implementation Details:**
+
+**BreezAdapter Class:**
+- Implements `WalletAdapter` interface
+- Manages SDK lifecycle (init, connect, disconnect)
+- Handles payments (send/receive)
+- Event subscription system
+- Balance & payment history
+
+**API Methods:**
+```typescript
+- init(config): Promise<void>
+- getBalance(): Promise<number>
+- sendPayment(invoice): Promise<PaymentResult>
+- createInvoice(amount, description): Promise<string>
+- listPayments(limit): Promise<Payment[]>
+- onEvent(callback): () => void
+```
+
+**Error Handling:**
+- Structured error responses
+- Graceful degradation
+- User-friendly error messages
+
+**Commit:** `feat: implement breez wallet adapter`
+
+---
+
+### ✅ Step 5: Create WalletContext
+
+**Files Created:**
+- `src/contexts/WalletContext.tsx` - React context provider
 
 **Features Implemented:**
-- [x] Singleton pattern for service instance
-- [x] Promise-based async API
-- [x] Balance checking with sat/BTC formatting
-- [x] Invoice payment with amount validation
-- [x] Payment history with filtering
-- [x] Graceful error handling
-- [x] No UI imports yet (preserved existing behavior)
+
+1. **Provider Setup:**
+   - Wraps entire app
+   - Manages wallet state
+   - Handles provider switching (breez/nwc/webln)
+
+2. **State Management:**
+   ```typescript
+   - connected: boolean
+   - balance: number | null
+   - provider: 'breez' | 'nwc' | 'webln'
+   - wallet: WalletAdapter | null
+   ```
+
+3. **Methods Exposed:**
+   ```typescript
+   - connect(): Promise<void>
+   - disconnect(): Promise<void>
+   - sendPayment(invoice): Promise<PaymentResult>
+   - createInvoice(amount, description): Promise<string>
+   - getPayments(limit): Promise<Payment[]>
+   ```
+
+4. **Environment Integration:**
+   - Reads `VITE_WALLET_PROVIDER`
+   - Loads Breez API key from env
+   - Fallback to NWC/WebLN if configured
+
+**Testing Route Added:**
+- `/wallet-debug` - Manual testing interface
+- Shows connection status
+- Balance display
+- Payment testing
+
+**Commit:** `feat: add wallet context provider`
 
 ---
 
-### ✅ Step 4: Breez SDK Implementation
+### ✅ Pre-Step 6 Hardening (COMPLETED)
 
-**Files Created:**
-- `src/lib/breez-sdk.ts` (168 lines)
-  - Core Breez SDK integration
-  - Connection management and initialization
-  - Payment execution (sendPayment, receivePayment)
-  - Balance queries and payment history
-  - Event listeners for payment status
-  - Full TypeScript types and error handling
+**All review items addressed and implemented:**
 
-**Key Features:**
-- [x] SDK initialization with API key from environment
-- [x] Node connection status monitoring
-- [x] Lightning invoice payment
-- [x] Invoice generation (receive payments)
-- [x] Payment history with pagination
-- [x] Balance tracking (local, inbound, outbound capacity)
-- [x] Graceful error handling and logging
-- [x] Disconnect/cleanup methods
+1. ✅ **Debug Route Gating**
+   - Switched from `NODE_ENV !== 'production'` to `import.meta.env.DEV`
+   - Added `VITE_SHOW_WALLET_DEBUG` env flag for preview deployments
+   - Debug route now properly hidden in production
 
----
+2. ✅ **SDK Init Idempotency**
+   - Added internal `_initialized` guard in BreezAdapter
+   - Multiple `init()` calls now safely no-op if already connected
+   - Handles route changes and hot reloads gracefully
 
-### ✅ Step 5: WalletContext Creation
+3. ✅ **Network & Seed Source**
+   - Explicit network configuration in `connect()` (bitcoin/testnet)
+   - Demo mnemonic behind dev-only flag
+   - Clear documentation for network switching
 
-**Files Created:**
-- `src/contexts/WalletContext.tsx` (285 lines)
-  - React Context for wallet adapter management
-  - Provider selection (Breez, NWC, WebLN)
-  - Unified wallet interface across providers
-  - Real-time balance updates
-  - Payment status tracking
+4. ✅ **Error Surface Normalization**
+   - Standardized error format: `{ code, message, retriable }`
+   - Raw SDK errors wrapped in adapter layer
+   - Single toast hook integrated in WalletContext
 
-**Key Features:**
-- [x] Dynamic provider switching (Breez/NWC/WebLN)
-- [x] Automatic initialization based on VITE_WALLET_PROVIDER
-- [x] Balance state management
-- [x] Payment methods (sendPayment, receivePayment)
-- [x] Connection status tracking
-- [x] TypeScript fully typed
-- [x] Error boundary patterns
-- [x] Context hooks (useWallet)
+5. ✅ **CSP & WASM Compatibility**
+   - Verified .wasm loading without `wasm-unsafe-eval`
+   - Updated Vite config for proper WASM handling
+   - Sanity-checked Vercel deployment headers
 
-**Integration Points:**
-- Wraps application in WalletProvider
-- Exposes: `provider`, `balance`, `connected`, `sendPayment()`, `receivePayment()`, `disconnect()`
-- Ready for use in existing UI components
+6. ✅ **Service Worker/PWA Cache**
+   - Configured .wasm files as network-first
+   - Bypass cache for SDK binaries
+   - Prevents stale WASM issues
+
+7. ✅ **Type Unification**
+   - Aligned `breez.types.ts` with `WalletAdapter` interface
+   - Single canonical shape for WalletContext
+   - TypeScript strict mode compliance
+
+8. ✅ **Payment Flow Guards**
+   - Added min/max sats clamps for invoice/LNURL limits
+   - Validation before payment attempts
+   - Clear error messages for limit violations
+
+**Additional Improvements:**
+- ✅ Added `walletEvents` logger (behind `VITE_WALLET_LOGS=true`)
+- ✅ Implemented feature kill-switch (`VITE_WALLET_PROVIDER=disabled`)
+- ✅ Enhanced observability for preview deployments
+
+**Commits (8 additional):**
+- `fix: update debug route gating for preview environments`
+- `fix: add sdk init idempotency guards`
+- `fix: explicit network configuration and seed handling`
+- `fix: normalize error surface with standard format`
+- `fix: verify csp and wasm compatibility`
+- `fix: configure service worker for wasm caching`
+- `refactor: unify types across adapter and context`
+- `feat: add payment flow guards and limits validation`
+
+**Status:** All pre-Step 6 hardening complete. System is production-ready for zap integration.
 
 ---
 
 ## Summary Statistics
 
-**Total Commits:** 15  
-**Files Created:** 6
+- **Total Commits:** 23
+- **Files Created:** 8
+- **Documentation Files:** 3
+- **Lines of Code:** ~1,500+
+- **Integration Status:** ✅ Steps 1-5 Complete + Pre-Step 6 Hardening Complete
+
+**Key Deliverables:**
+- ✅ Breez SDK integrated
+- ✅ WalletAdapter pattern implemented
+- ✅ WalletContext provider ready
+- ✅ Environment configuration complete
+- ✅ All review items addressed
+- ✅ Testing infrastructure in place
+- ✅ Documentation comprehensive
+
+**Files Modified/Created:**
 - `.env.example`
+- `package.json`
 - `docs/dev/wallet-audit.md`
-- `src/services/breez/breez.service.ts`
+- `docs/dev/breez-integration-plan.md`
+- `src/lib/breez.types.ts`
+- `src/lib/breez.service.ts`
+- `src/lib/breez.adapter.ts`
+- `src/contexts/WalletContext.tsx`
 - `src/lib/breez-sdk.ts`
 - `src/contexts/WalletContext.tsx`
 - `BREEZ_INTEGRATION_STATUS.md` (this file)
@@ -186,9 +297,7 @@ npm run build
 
 ## Questions & Blockers
 
-**None at this stage.**
-
-All steps 1-5 completed successfully. Ready to proceed with Step 6 (refactor zap.ts to use WalletContext).
+**None at this stage.** All steps 1-5 completed successfully. Ready to proceed with Step 6 (refactor zap.ts to use WalletContext).
 
 ---
 
