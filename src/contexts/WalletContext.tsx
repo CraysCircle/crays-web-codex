@@ -1,4 +1,4 @@
-import { createContext, useContext, createSignal, onMount, JSX } from 'solid-js';
+import { createContext, useContext, createSignal, onMount, onCleanup, JSX } from 'solid-js';
 import type { WalletAdapter } from '../wallets/adapters/WalletAdapter';
 import { BreezAdapter } from '../wallets/adapters/BreezAdapter';
 import { NwcAdapter } from '../wallets/adapters/NwcAdapter';
@@ -26,6 +26,11 @@ export interface WalletApi {
   onEvents(cb: (e: any) => void): void;
   providerDisabled?: boolean;
 }
+
+// Non-UI accessor for library code (e.g., zaps)
+let __walletApi: WalletApi | null = null;
+export function setWalletApiForLib(api: WalletApi | null) { __walletApi = api; }
+export function getWalletApiForLib(): WalletApi | null { return __walletApi; }
 
 interface WalletState {
   initialized: boolean;
@@ -150,6 +155,25 @@ export function WalletProvider(props: { children: JSX.Element }) {
     disconnectWallet,
     getAdapter,
   };
+
+  const walletApi: WalletApi = {
+    init: async () => { await connectWallet('breez'); },
+    getBalance: async () => { 
+      await getBalance(); 
+      return wallet().balance || 0;
+    },
+    createInvoice: async (params) => { return await createInvoice(params); },
+    sendBolt11: async (pr) => { return await sendBolt11(pr); },
+    payLnurlPay: async (url, amountMsat, comment, zapRequestJson) => { 
+      return await payLnurlPay(url, amountMsat, comment, zapRequestJson); 
+    },
+    listPayments: async () => { return await getPayments(); },
+    onEvents: (cb) => { /* no-op for now */ },
+    providerDisabled: wallet().disabled,
+  };
+  
+  setWalletApiForLib(walletApi);
+  onCleanup(() => setWalletApiForLib(null));
 
   return (
     <WalletContext.Provider value={contextValue}>
