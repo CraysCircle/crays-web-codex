@@ -18,15 +18,12 @@ import { ReadsProvider } from './contexts/ReadsContext';
 import { AdvancedSearchProvider } from './contexts/AdvancedSearchContext';
 import { DMProvider } from './contexts/DMContext';
 import WalletFab from './components/WalletFab';
-import 'media-chrome';
-import 'media-chrome/menu';
-import 'media-chrome/audio';
-import 'hls-video-element';
-
+import "media-chrome";
+import "media-chrome/media-theme-element";
+import "hls-video-element";
+import "videojs-video-element";
 export const version = import.meta.env.PRIMAL_VERSION;
-
 export const APP_ID = `web_${version}_${Math.floor(Math.random()*10000000000)}`;
-
 const App: Component = () => {
   onMount(() => {
     connect();
@@ -36,16 +33,14 @@ const App: Component = () => {
     //     .catch(err => console.log('SW registration failed: ', err));
     // }
   });
-
   onCleanup(() => {
     disconnect();
   });
-
   return (
     <WalletProvider>
       <AppProvider>
         <TranslatorProvider>
-          <Toaster />
+          
           <MediaProvider>
             <AccountProvider>
               <SearchProvider>
@@ -77,5 +72,4 @@ const App: Component = () => {
     </WalletProvider>
   );
 };
-
 export default App;
