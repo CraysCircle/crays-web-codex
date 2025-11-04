@@ -19,11 +19,8 @@ import AdvancedSearchProvider from './contexts/AdvancedSearchContext';
 import DMProvider from './contexts/DMContext';
 import WalletFAB from './components/WalletFab/WalletFab';
 
-import '@fontsource/inter/cyrillic.css';
-import '@fontsource/inter/greek.css';
-import '@fontsource/inter/latin.css';
-
 export const version = import.meta.env.PRIMAL_VERSION;
+
 export const APP_ID = `web_${version}_${Math.floor(Math.random()*10000000000)}`;
 
 const App: Component = () => {
