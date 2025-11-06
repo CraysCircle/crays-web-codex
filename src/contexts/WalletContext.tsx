@@ -75,7 +75,7 @@ export function WalletProvider(props: { children: JSX.Element }) {
   const connectWallet = async (type: 'breez' | 'nwc', config?: any) => {
     try {
       if (type === 'breez') {
-        adapter = new BreezAdapter();
+        adapter = new BreezAdapte({ apiKey: import.meta.env.VITE_BREEZ_API_KEY || '', network: import.meta.env.VITE_BREEZ_NETWORK || 'testnet' }));
       } else if (type === 'nwc') {
         adapter = new NwcAdapter();
       } else {
